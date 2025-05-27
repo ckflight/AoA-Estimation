@@ -24,9 +24,8 @@ This project implements **Angle of Arrival (AoA) estimation** using two receivin
 
 The AoA is estimated by calculating the phase difference of the received signal at two spatially separated antennas. Given the antenna spacing `d`, the signal wavelength `λ`, and the measured phase difference `Δφ`, the AoA `θ` is estimated as:
 
-\[
-\theta = \arcsin \left( \frac{\Delta \phi \cdot \lambda}{2 \pi d} \right)
-\]
+$\theta = \arcsin \left( \frac{\Delta \phi \cdot \lambda}{2 \pi d} \right)$
+
 
 ---
 

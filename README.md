@@ -56,6 +56,8 @@ $\theta = \arcsin \left( \frac{\Delta \phi \cdot \lambda}{2 \pi d} \right)$
 This theoretical framework enables estimation of the direction from which the RF signal arrives using just two antennas and phase measurements.
 
 
-## Setup
+## Example Plots
 
-### Prerequisites
+![Image](https://github.com/user-attachments/assets/fd282ac3-22f1-44dd-8fe6-54b0a07b7e29)
+
+![Image](https://github.com/user-attachments/assets/a1754ede-5587-4edc-9164-fd345fc38b9d)

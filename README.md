@@ -31,7 +31,7 @@ Assuming two antennas spaced by distance $d$, the time difference of arrival $\D
 $\Delta t = \frac{d \sin \theta}{c}$
 
 where:
-- $c$ is the speed of light (~$3 \times 10^8$ m/s),
+- $c$ is the speed of light (approximately 3 × 10^8 m/s),
 - $\theta$ is the AoA to be estimated.
 
 The phase difference $\Delta \phi$ between the signals at the two antennas, assuming a carrier frequency $f$, is related to $\Delta t$ as:

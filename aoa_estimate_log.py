@@ -14,7 +14,7 @@ chunk_size = 300_000     # Larger = fewer reads, faster
 # Constants
 d = 0.10                 # Distance between antennas (meters)
 c = 3e8                  # Speed of light (m/s)
-f = 1000e6               # Signal frequency (Hz)
+f = 800e6               # Signal frequency (Hz)
 wavelength = c / f       # Signal wavelength
 
 filename = "/home/ubuntu/Desktop/aoa_estimation/aoa_log.dat"

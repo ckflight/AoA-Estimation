@@ -22,12 +22,39 @@ This project implements **Angle of Arrival (AoA) estimation** using two receivin
 
 ## Theory
 
-The AoA is estimated by calculating the phase difference of the received signal at two spatially separated antennas. Given the antenna spacing `d`, the signal wavelength `λ`, and the measured phase difference `Δφ`, the AoA `θ` is estimated as:
+The Angle of Arrival (AoA) estimation is based on measuring the phase difference of a received radio frequency (RF) signal at two spatially separated antennas. When a plane wave arrives from a direction $\theta$ (relative to the antenna array normal), the path difference between the two antennas causes a phase shift in the received signals.
+
+### Signal Model
+
+Assuming two antennas spaced by distance $d$, the time difference of arrival $\Delta t$ between antennas is:
+
+$\Delta t = \frac{d \sin \theta}{c}$
+
+where:
+- $c$ is the speed of light (~$3 \times 10^8$ m/s),
+- $\theta$ is the AoA to be estimated.
+
+The phase difference $\Delta \phi$ between the signals at the two antennas, assuming a carrier frequency $f$, is related to $\Delta t$ as:
+
+$\Delta \phi = 2 \pi f \Delta t = \frac{2 \pi d \sin \theta}{\lambda}$
+
+where:
+- $\lambda = \frac{c}{f}$ is the signal wavelength.
+
+Rearranging to solve for $\theta$, we get the AoA estimate:
 
 $\theta = \arcsin \left( \frac{\Delta \phi \cdot \lambda}{2 \pi d} \right)$
 
+### Practical Considerations
+
+- **Ambiguity:** The maximum unambiguous AoA range is limited by the antenna spacing $d$ relative to the wavelength $\lambda$. To avoid spatial aliasing, $d$ is typically less than or equal to $\frac{\lambda}{2}$. In this project, the spacing is 0.10 m, suitable for 800 MHz signals.
+- **Noise and Multipath:** Real signals are corrupted by noise and multipath reflections. To improve robustness, this implementation uses histograms and smoothing of phase difference estimates over many samples.
+- **Complex IQ Samples:** The system uses complex baseband IQ samples captured simultaneously on two receiver channels (bladeRF 2.0 Micro 2RX). The phase difference is calculated via cross-correlation of these channels.
 
 ---
+
+This theoretical framework enables estimation of the direction from which the RF signal arrives using just two antennas and phase measurements.
+
 
 ## Setup
 

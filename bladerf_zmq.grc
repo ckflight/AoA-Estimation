@@ -24,7 +24,7 @@ options:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 8]
+    coordinate: [8, 56.0]
     rotation: 0
     state: enabled
 
@@ -208,6 +208,21 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [728, 336.0]
+    rotation: 0
+    state: enabled
+- name: blocks_message_debug_0
+  id: blocks_message_debug
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    en_uvec: 'False'
+    log_level: debug
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1240, 656.0]
     rotation: 0
     state: enabled
 - name: blocks_var_to_msg_0
@@ -596,7 +611,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1224, 552.0]
+    coordinate: [1240, 552.0]
     rotation: 0
     state: enabled
 - name: zeromq_pub_sink_0
@@ -633,6 +648,7 @@ connections:
 - [bladeRF_source_0, '1', analog_agc_xx_1, '0']
 - [blocks_interleave_0, '0', blocks_file_sink_0, '0']
 - [blocks_interleave_0, '0', zeromq_pub_sink_0, '0']
+- [blocks_var_to_msg_0, msgout, blocks_message_debug_0, print]
 - [blocks_var_to_msg_0, msgout, zeromq_pub_msg_sink_0, in]
 
 metadata:

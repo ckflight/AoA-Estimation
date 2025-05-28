@@ -33,12 +33,33 @@ blocks:
   id: variable
   parameters:
     comment: ''
-    value: 800e6
+    value: 600e6
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
     coordinate: [312, 52.0]
+    rotation: 0
+    state: enabled
+- name: freq_range
+  id: variable_qtgui_range
+  parameters:
+    comment: ''
+    gui_hint: ''
+    label: ''
+    min_len: '200'
+    orient: QtCore.Qt.Horizontal
+    rangeType: float
+    start: '0'
+    step: 10e6
+    stop: 6e9
+    value: 800e6
+    widget: counter_slider
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [408, 56.0]
     rotation: 0
     state: enabled
 - name: samp_rate
@@ -98,8 +119,8 @@ blocks:
   parameters:
     affinity: ''
     alias: ''
-    bias_tee0: 'False'
-    bias_tee1: 'False'
+    bias_tee0: 'True'
+    bias_tee1: 'True'
     buffers: '512'
     buflen: '4096'
     bw: 10e6
@@ -112,7 +133,7 @@ blocks:
     feature: default
     fpga_image: ''
     fpga_reload: 'False'
-    freq: freq
+    freq: freq_range
     gain0: '10'
     gain1: '10'
     gain_mode0: 'True'
@@ -187,6 +208,23 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [728, 336.0]
+    rotation: 0
+    state: enabled
+- name: blocks_var_to_msg_0
+  id: blocks_var_to_msg
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    msgname: freq_range
+    target: freq_range
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [920, 552.0]
     rotation: 0
     state: enabled
 - name: qtgui_freq_sink_x_0
@@ -545,6 +583,22 @@ blocks:
     coordinate: [696, 468.0]
     rotation: 0
     state: enabled
+- name: zeromq_pub_msg_sink_0
+  id: zeromq_pub_msg_sink
+  parameters:
+    address: tcp://*:5556
+    affinity: ''
+    alias: ''
+    bind: 'True'
+    comment: ''
+    timeout: '100'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1224, 552.0]
+    rotation: 0
+    state: enabled
 - name: zeromq_pub_sink_0
   id: zeromq_pub_sink
   parameters:
@@ -579,6 +633,7 @@ connections:
 - [bladeRF_source_0, '1', analog_agc_xx_1, '0']
 - [blocks_interleave_0, '0', blocks_file_sink_0, '0']
 - [blocks_interleave_0, '0', zeromq_pub_sink_0, '0']
+- [blocks_var_to_msg_0, msgout, zeromq_pub_msg_sink_0, in]
 
 metadata:
   file_format: 1

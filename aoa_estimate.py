@@ -1,46 +1,48 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import os
-from tqdm import tqdm
-from scipy.ndimage import gaussian_filter1d
 import zmq
-import sys
+import struct
+from scipy.ndimage import gaussian_filter1d
 
 # ==== CONFIGURATION ====
-mode = 'live'           # 'file' or 'live'
-smooth_plot = 1         # 1: smooth, 0: histogram
-start_percent = 0       # For file mode: start reading at N% of file
-plot_interval = 1       # Update plot every N chunks
-chunk_size = 300_000    # Samples per channel (two channels interleaved)
+mode = 'realtime'           # Operating mode: 'realtime' receives live data from sockets.
+                            # 'file' mode could be added for reading from files.
+smooth_plot = 1             # If 1, apply smoothing filter to histograms for nicer visualization.
+plot_interval = 1           # Update the plot every N chunks of received data.
+chunk_size = 500_000        # Number of complex samples per channel per chunk.
+initial_freq = 800e6        # Initial center frequency in Hz (e.g., 800 MHz).
 # =======================
 
-# Constants
-d = 0.10                # Distance between antennas (meters)
-c = 3e8                 # Speed of light (m/s)
+# CONSTANTS
+d = 0.10                   # Distance between antennas in meters.
+c = 3e8                    # Speed of light in meters per second.
 
-# Frequencies for modes
-freq_file = 800e6       # Hz for file mode
-freq_live = 800e6      # Hz for live mode
+# Starting frequency and wavelength
+current_freq = initial_freq
+current_wavelength = c / current_freq   # wavelength = speed_of_light / frequency
 
-wavelength_file = c / freq_file
-wavelength_live = c / freq_live
-
-# Histogram bins
+# Define histogram bins for:
+# Phase difference (degrees), arcsin argument (dimensionless), and angle of arrival (degrees)
 bins_phase = np.linspace(-180, 180, 100)
 bins_argument = np.linspace(-1, 1, 100)
 bins_aoa = np.linspace(-90, 90, 100)
+
+# Calculate bin centers for plotting purposes
 centers_phase = (bins_phase[:-1] + bins_phase[1:]) / 2
 centers_argument = (bins_argument[:-1] + bins_argument[1:]) / 2
 centers_aoa = (bins_aoa[:-1] + bins_aoa[1:]) / 2
 
+# Turn interactive mode on for matplotlib (enables dynamic updating)
 plt.ion()
-fig, axes = plt.subplots(1, 3, figsize=(14, 5))
+fig, axes = plt.subplots(1, 3, figsize=(14, 5))  # Create figure with 3 subplots side by side
 
-def plot_histograms(h_phase, h_argument, h_aoa, chunk_idx, total_chunks=None, title_suffix=""):
+def plot_histograms(h_phase, h_argument, h_aoa, chunk_idx, title_suffix=""):
+    # Clear previous plot data
     axes[0].cla()
     axes[1].cla()
     axes[2].cla()
 
+    # --- Phase difference plot ---
     if smooth_plot:
         axes[0].plot(centers_phase, h_phase, color='gray')
     else:
@@ -49,6 +51,15 @@ def plot_histograms(h_phase, h_argument, h_aoa, chunk_idx, total_chunks=None, ti
     axes[0].set_xlim(-180, 180)
     axes[0].grid(True)
 
+    # Vertical lines every 60 degrees on phase plot
+    phase_lines = np.arange(-180, 181, 60)
+    for x in phase_lines:
+        axes[0].axvline(x=x, color='lightgray', linestyle='--', linewidth=0.8)
+        # Add text labels just above the top of y-axis ticks
+        ymax = axes[0].get_ylim()[1]
+        axes[0].text(x, ymax * 0.95, f"{x}", color='gray', fontsize=8, ha='center', va='top')
+
+    # --- Arcsin argument plot ---
     max_mid_arg = max(h_argument[1:-1]) if len(h_argument) > 2 else 1
     if smooth_plot:
         axes[1].plot(centers_argument, h_argument, color='orange')
@@ -59,6 +70,9 @@ def plot_histograms(h_phase, h_argument, h_aoa, chunk_idx, total_chunks=None, ti
     axes[1].set_ylim(0, max_mid_arg * 1.1)
     axes[1].grid(True)
 
+    # No vertical lines or labels here to keep clean (optional: can add few if you want)
+
+    # --- Angle of Arrival plot ---
     max_mid_aoa = max(h_aoa[1:-1]) if len(h_aoa) > 2 else 1
     if smooth_plot:
         axes[2].plot(centers_aoa, h_aoa, color='blue')
@@ -69,25 +83,47 @@ def plot_histograms(h_phase, h_argument, h_aoa, chunk_idx, total_chunks=None, ti
     axes[2].set_ylim(0, max_mid_aoa * 1.1)
     axes[2].grid(True)
 
-    if total_chunks:
-        plt.suptitle(f"Chunk {chunk_idx+1}/{total_chunks} {title_suffix}")
-    else:
-        plt.suptitle(f"Chunk {chunk_idx+1} {title_suffix}")
+    # Vertical lines every 30 degrees on AoA plot
+    aoa_lines = np.arange(-90, 91, 30)
+    for x in aoa_lines:
+        axes[2].axvline(x=x, color='lightgray', linestyle='--', linewidth=0.8)
+        ymax = axes[2].get_ylim()[1]
+        axes[2].text(x, ymax * 0.95, f"{x}", color='gray', fontsize=8, ha='center', va='top')
+
+    # Main title
+    freq_mhz = current_freq / 1e6
+    plt.suptitle(f"Chunk {chunk_idx+1} {title_suffix} — Freq: {freq_mhz:.3f} MHz")
     plt.pause(0.001)
 
+
+
 def process_samples(raw, wavelength):
-    rx1 = raw[0::2]
-    rx2 = raw[1::2]
+
+    # Separate samples for the two antennas (assumed interleaved)
+    rx1 = raw[0::2]  # Even samples = antenna 1
+    rx2 = raw[1::2]  # Odd samples = antenna 2
+
+    # Cross correlation: element-wise multiplication of rx1 by conjugate of rx2
     cross = rx1 * np.conj(rx2)
+
+    # Extract phase difference (angle) in radians and convert to degrees
     phase_diff = np.angle(cross)
     phase_diff_deg = np.degrees(phase_diff)
+
+    # Calculate arcsin argument used for AoA estimation:
+    # argument = phase_diff * wavelength / (2π * antenna_spacing)
+    # Clip values to [-1,1] for valid arcsin input
     argument = np.clip(phase_diff * wavelength / (2 * np.pi * d), -1, 1)
+
+    # Calculate AoA in degrees
     aoa_deg = np.degrees(np.arcsin(argument))
 
+    # Compute histograms for visualization
     h_phase, _ = np.histogram(phase_diff_deg, bins=bins_phase)
     h_argument, _ = np.histogram(argument, bins=bins_argument)
     h_aoa, _ = np.histogram(aoa_deg, bins=bins_aoa)
 
+    # Optionally smooth histograms using Gaussian filter for nicer plots
     if smooth_plot:
         h_phase = gaussian_filter1d(h_phase, sigma=2)
         h_argument = gaussian_filter1d(h_argument, sigma=2)
@@ -95,87 +131,108 @@ def process_samples(raw, wavelength):
 
     return h_phase, h_argument, h_aoa
 
-if mode == 'file':
-    filename = "/home/ubuntu/Desktop/aoa_estimation/aoa_log.dat"
-    sample_bytes = 8  # 8 bytes = 2x complex64 (each 4 bytes)
-    wavelength = wavelength_file
-
-    file_size = os.path.getsize(filename)
-    total_samples = file_size // sample_bytes
-    total_chunks = total_samples // (chunk_size * 2)
-
-    start_sample = int(total_samples * start_percent / 100)
-    start_sample -= start_sample % (chunk_size * 2)
-    remaining_samples = total_samples - start_sample
-    remaining_chunks = remaining_samples // (chunk_size * 2)
-
-    print(f"Starting at {start_percent}% ({start_sample} samples)")
-    print(f"Remaining chunks: {remaining_chunks}")
-
-    try:
-        with open(filename, "rb") as f:
-            f.seek(start_sample * sample_bytes)
-
-            for chunk_idx in tqdm(range(remaining_chunks), desc="Chunks", unit="chunk"):
-                raw = np.fromfile(f, dtype=np.complex64, count=chunk_size * 2)
-                if len(raw) < chunk_size * 2:
-                    break
-
-                h_phase, h_argument, h_aoa = process_samples(raw, wavelength)
-
-                if chunk_idx % plot_interval == 0:
-                    plot_histograms(h_phase, h_argument, h_aoa, chunk_idx, remaining_chunks, "(File)")
-
-                if not plt.fignum_exists(fig.number):
-                    print("Figure closed by user.")
-                    break
-
-    except Exception as e:
-        print("Error:", e)
-
-elif mode == 'live':
-    wavelength = wavelength_live
-    samples_per_chunk = chunk_size * 2
-    bytes_per_chunk = samples_per_chunk * 8
+if mode == 'realtime':
+    # Calculate number of samples and bytes per chunk
+    # Each chunk has chunk_size complex samples per channel
+    samples_per_chunk = chunk_size * 2  # 2 antennas interleaved = total samples
+    bytes_per_chunk = samples_per_chunk * 8  # complex64 = 8 bytes per complex sample
 
     context = zmq.Context()
-    socket = context.socket(zmq.SUB)
-    socket.connect("tcp://localhost:5555")
-    socket.setsockopt(zmq.SUBSCRIBE, b"")
 
-    buffer = bytearray()
-    chunk_idx = 0
+    # ZMQ subscriber socket to receive complex sample chunks (port 5555)
+    socket_samples = context.socket(zmq.SUB)
+    socket_samples.connect("tcp://localhost:5555")
+    socket_samples.setsockopt(zmq.SUBSCRIBE, b"")  # Subscribe to all messages
+
+    # ZMQ subscriber socket to receive frequency updates (port 5556)
+    socket_freq = context.socket(zmq.SUB)
+    socket_freq.connect("tcp://localhost:5556")
+    socket_freq.setsockopt(zmq.SUBSCRIBE, b"")
+
+    # Poller to check both sockets without blocking indefinitely
+    poller = zmq.Poller()
+    poller.register(socket_samples, zmq.POLLIN)
+    poller.register(socket_freq, zmq.POLLIN)
+
+    buffer = bytearray()  # Buffer to accumulate incoming sample bytes
+    chunk_idx = 0         # Chunk counter
 
     try:
         while True:
-            msg = socket.recv()
-            buffer.extend(msg)
+            # Poll sockets with 100 ms timeout
+            socks = dict(poller.poll(100))
 
-            while len(buffer) >= bytes_per_chunk:
-                chunk_bytes = buffer[:bytes_per_chunk]
-                buffer = buffer[bytes_per_chunk:]
+            # Check if frequency update message is available
+            if socket_freq in socks and socks[socket_freq] == zmq.POLLIN:
+                freq_msg_raw = socket_freq.recv()
 
-                raw = np.frombuffer(chunk_bytes, dtype=np.complex64)
-                h_phase, h_argument, h_aoa = process_samples(raw, wavelength)
+                # Example message bytes (hex):
+                # 07 02 00 0A 66 72 65 71 5F 72 61 6E 67 65 04 41 B9 CF 0E 40 00 00 00
+                #                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                #                      The ASCII string "freq_range" followed by:
+                #                      0x04 - PMT type tag (not part of the frequency value)
+                #                      41 B9 CF 0E 40 00 00 00 - 8 bytes representing a big-endian
+                # - For instance, 0x41B9CF0E40000000 corresponds to 433,000,000 Hz (433 MHz) IEEE 754 double float.
 
-                if chunk_idx % plot_interval == 0:
-                    plot_histograms(h_phase, h_argument, h_aoa, chunk_idx, title_suffix="(Live)")
+                print("Raw freq bytes:", ' '.join(f'{b:02X}' for b in freq_msg_raw))
 
-                chunk_idx += 1
+                try:
+                    # Search for the byte pattern corresponding to key 'freq_range' in the message
+                    freq_range_bytes = b'freq_range'
+                    start_index = freq_msg_raw.find(freq_range_bytes)
+                    if start_index == -1:
+                        print("freq_range key not found in frequency message")
+                        continue
 
-                if not plt.fignum_exists(fig.number):
-                    print("Figure closed by user.")
-                    break
+                    # The frequency value is stored as an 8-byte double immediately after 'freq_range' key + 1 byte (PMT type)
+                    double_start = start_index + len(freq_range_bytes) + 1
+                    double_bytes = freq_msg_raw[double_start: double_start + 8]
+
+                    # Unpack the 8 bytes as big-endian double precision float ('>d')
+                    new_freq = struct.unpack('>d', double_bytes)[0]
+
+                    # If frequency changed and positive, update current frequency and wavelength
+                    if new_freq != current_freq and new_freq > 0:
+                        current_freq = new_freq
+                        current_wavelength = c / current_freq
+                        print(f"Frequency updated: {current_freq / 1e6:.3f} MHz")
+
+                except Exception as e:
+                    print(f"Frequency decode error: {e}")
+
+            # Check if sample data message is available
+            if socket_samples in socks and socks[socket_samples] == zmq.POLLIN:
+                msg = socket_samples.recv()
+                buffer.extend(msg)  # Append received bytes to buffer
+
+                # While buffer contains at least one full chunk, process it
+                while len(buffer) >= bytes_per_chunk:
+                    chunk_bytes = buffer[:bytes_per_chunk]  # Extract one chunk of bytes
+                    buffer = buffer[bytes_per_chunk:]       # Remove processed chunk from buffer
+
+                    # Convert bytes to numpy array of complex64 samples (interleaved)
+                    raw = np.frombuffer(chunk_bytes, dtype=np.complex64)
+
+                    # Process samples to get histograms
+                    h_phase, h_argument, h_aoa = process_samples(raw, current_wavelength)
+
+                    # Update plot at configured intervals
+                    if chunk_idx % plot_interval == 0:
+                        plot_histograms(h_phase, h_argument, h_aoa, chunk_idx, title_suffix="(Realtime)")
+
+                    chunk_idx += 1
+
+                    # Exit if user closed the figure window
+                    if not plt.fignum_exists(fig.number):
+                        print("Figure closed by user.")
+                        raise KeyboardInterrupt()
 
     except KeyboardInterrupt:
-        print("Interrupted by user")
+        print("User interrupted")
 
     finally:
-        socket.close()
+        # Clean up sockets and context
+        socket_samples.close()
+        socket_freq.close()
         context.term()
-
-else:
-    print(f"Unknown mode '{mode}'. Please select 'file' or 'live'.")
-
-plt.ioff()
-plt.show()
+        print("Exited cleanly")
